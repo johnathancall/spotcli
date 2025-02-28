@@ -3,7 +3,7 @@ import { readFileSync } from 'fs'
 const data = readFileSync('./config.json', 'utf-8')
 const config = JSON.parse(data)
 const token = config.token
-const playlist_ids = config.playlist_ids
+const base_playlist_ids = config.base_playlist_ids
 
 async function fetchWebApi(endpoint, method, body) {
 	const res = await fetch(`https://api.spotify.com/${endpoint}`, {
@@ -16,11 +16,11 @@ async function fetchWebApi(endpoint, method, body) {
 	return await res.json()
 }
 
-async function getTopTracks(){
-	// Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
-	return (await fetchWebApi(
-		'v1/me/top/tracks?time_range=long_term&limit=10', 'GET'
-	)).items
+async function getBasePlaylistNames(){
+	return await Promise.all(base_playlist_ids.map(async (id) => {
+		let res = await fetchWebApi(`v1/playlists/${id}`, 'GET')
+		return {id: id, name: res.name}
+	}))
 }
 
 async function getPlaylistItems(playlist_id){
@@ -29,5 +29,4 @@ async function getPlaylistItems(playlist_id){
 	)).items
 }
 
-const topTracks = await getTopTracks()
-console.log(await getPlaylistItems(playlist_ids[0]))
+console.log(await getBasePlaylistNames())
