@@ -38,8 +38,8 @@ async function fetchWebApi(endpoint, method, body) {
 	return await res.json()
 }
 
-async function getBasePlaylistNames(){
-	return await Promise.all(config.base_playlist_ids.map(async (id) => {
+async function getBasePlaylistNames(playlist_ids){
+	return await Promise.all(playlist_ids.map(async (id) => {
 		let res = await fetchWebApi(`v1/playlists/${id}`, 'GET')
 		return {id: id, name: res.name}
 	}))
@@ -51,5 +51,7 @@ async function getPlaylistItems(playlist_id){
 	)).items
 }
 
+// Calls begin here
 token = await getToken()
-console.log(await getBasePlaylistNames())
+
+
