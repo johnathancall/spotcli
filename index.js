@@ -119,6 +119,10 @@ async function getSubPlaylists(combined_playlist_info) {
 	return playlists
 }
 
+async function getTracksFromPlaylist(playlistId) {
+	return await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'GET')
+}
+
 
 // Update playlists
 
@@ -170,8 +174,16 @@ async function clearPlaylist(playlistId) {
 	})
 }
 
-async function mergePlaylists() {
+async function mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists) {
+	// Iterate on each combined playlist
+	combinedPlaylistInfo.forEach((combId, combName) => {
 
+		// Gather necessary tracks
+		let baseTracks = []
+		subPlaylists[combName].forEach((subName) => {
+			console.log(subName, basePlaylistInfo.get(subName))
+		})
+	})
 }
 
 /* Calls begin here */
@@ -189,5 +201,4 @@ config.combined_playlist_ids.forEach((id) => {
 	clearPlaylist(id)
 })
 */
-
-clearPlaylist('0NLQM5ywWw39Bwiu9BiSx7')
+await mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists)
