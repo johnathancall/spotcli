@@ -1,22 +1,28 @@
 import { readFileSync } from 'fs'
+import fs from 'fs/promises'; // For saving the refresh token
 
 const data = readFileSync('./config.json', 'utf-8')
 const config = JSON.parse(data)
 let token = ""
 
 // Get authtoken for use in all other operations
-async function getToken(clientId, clientSecret) {
-    const url = "https://accounts.spotify.com/api/token";
-    
-    const response = await fetch(url, {
+async function getToken() {
+    let { client_id, client_secret, refresh_token } = config;
+
+    if (!refresh_token) {
+        throw new Error("Missing refresh token in config.json. Authenticate manually first.");
+    }
+
+    const response = await fetch('https://accounts.spotify.com/api/token', {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded"
         },
         body: new URLSearchParams({
-            grant_type: "client_credentials",
-            client_id: config.client_id,
-            client_secret: config.client_secret
+            grant_type: "refresh_token",
+            refresh_token: refresh_token,
+            client_id: client_id,
+            client_secret: client_secret
         })
     });
 
@@ -25,8 +31,25 @@ async function getToken(clientId, clientSecret) {
     }
 
     const data = await response.json();
+    
+    // Update config.json with new access token (optional but recommended)
+    await updateConfig({ access_token: data.access_token });
+
     return data.access_token;
 }
+
+// Function to update config.json with new tokens
+async function updateConfig(newData) {
+    try {
+        let configData = JSON.parse(await fs.readFile("config.json", "utf-8"));
+        Object.assign(configData, newData);
+        await fs.writeFile("config.json", JSON.stringify(configData, null, 4));
+    } catch (error) {
+        console.error("Error updating config.json:", error);
+    }
+}
+
+export { getToken };
 
 // Catch-all fetch web API function
 async function fetchWebApi(endpoint, method, body) {
@@ -99,29 +122,52 @@ async function getSubPlaylists(combined_playlist_info) {
 
 // Update playlists
 
-async function removeFromPlaylist(track_id, playlist_id) {
-	await fetchWebApi(`v1/playlists/${playlist_id}/tracks`, 'DELETE', [track_id])
+async function removeFromPlaylist(trackUris, playlistId) {
+	let res = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'DELETE', trackUris)
+	console.log(res)
 }
 
-async function clearPlaylist(playlist_id) {
+async function clearPlaylist(playlistId) {
 	/* Step 1: get all track IDs inside this playlist */
 
 	// Fetch first batch of tracks
-	let tracks_json = await fetchWebApi(`v1/playlists/${playlist_id}/tracks`, 'GET')
-	let tracks_info = tracks_json.items
+	let tracksJson = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'GET')
 
 	// Handle first batch of tracks
-	let track_ids = []
-	tracks_info.forEach((track_info) => {
-		track_ids.push(track_info.track.id)
+	let trackIds = []
+	tracksJson.items.forEach((trackInfo) => {
+		trackIds.push(trackInfo.track.id)
 	})
 
-	// Get any further batches of tracks
+	// Fetch any further batches of tracks
+	let offset = tracksJson.offset
+	let limit = tracksJson.limit
 
-	tracks_json = await fetchWebApi(`v1/playlists/${playlist_id}/tracks`, 'GET')
-	tracks_info = tracks_json.items
-	console.log(tracks_json)
-	
+	while(tracksJson.next) {
+		tracksJson = await fetchWebApi(`v1/playlists/${playlistId}/tracks?offset=${offset + limit}&limit=100`, 'GET')
+
+		tracksJson.items.forEach((trackInfo) => {
+			trackIds.push(trackInfo.track.id)
+		})
+
+		offset = tracksJson.offset
+		limit = tracksJson.limit
+	}
+
+	let trackIdsBatched = Array.from({ length: Math.ceil(trackIds.length / 100) }, (_, i) =>
+	    trackIds.slice(i * 100, i * 100 + 100)
+	)
+
+	let trackIdsJson = trackIdsBatched.map(batch => ({
+	    tracks: batch.map(id => ({ uri: `spotify:track:${id}` }))
+	}))
+
+	console.log(trackIdsJson)
+
+	trackIdsJson.forEach((batch) => {
+		console.log(batch)
+		removeFromPlaylist(batch, playlistId)
+	})
 }
 
 async function mergePlaylists() {
@@ -138,6 +184,10 @@ let combinedPlaylistInfo = await getPlaylistNames(config.combined_playlist_ids)
 
 let subPlaylists = await getSubPlaylists(combinedPlaylistInfo)
 
+/*
 config.combined_playlist_ids.forEach((id) => {
 	clearPlaylist(id)
 })
+*/
+
+clearPlaylist('0NLQM5ywWw39Bwiu9BiSx7')
