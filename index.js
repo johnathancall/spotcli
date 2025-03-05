@@ -70,7 +70,6 @@ async function fetchWebApi(endpoint, method, body) {
 async function getPlaylistNames(playlist_ids){
 	const playlists = await Promise.all(playlist_ids.map(async (id) => {
 		let res = await fetchWebApi(`v1/playlists/${id}`, 'GET')
-		console.log(res.name)
 		return {id: id, name: res.name}
 	}))
 
@@ -128,20 +127,20 @@ async function getTracksFromPlaylist(playlistId) {
 
 	// Handle first batch of tracks
 	let trackIds = []
-	tracksJson.items.forEach((trackInfo) => {
+	for (const trackInfo of tracksJson.items) {
 		trackIds.push(trackInfo.track.id)
-	})
+	}
 
 	// Fetch any further batches of tracks
 	let offset = tracksJson.offset
 	let limit = tracksJson.limit
 
-	while(tracksJson.next) {
+	while (tracksJson.next) {
 		tracksJson = await fetchWebApi(`v1/playlists/${playlistId}/tracks?offset=${offset + limit}&limit=100`, 'GET')
 
-		tracksJson.items.forEach((trackInfo) => {
+		for (const trackInfo of tracksJson.items) {
 			trackIds.push(trackInfo.track.id)
-		})
+		}
 
 		offset = tracksJson.offset
 		limit = tracksJson.limit
@@ -149,7 +148,6 @@ async function getTracksFromPlaylist(playlistId) {
 
 	return trackIds
 }
-
 // Removes the specified tracks from the specified playlist
 async function removeFromPlaylist(trackUris, playlistId) {
 	let res = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'DELETE', trackUris)
@@ -162,57 +160,64 @@ async function addToPlaylist(trackUris, playlistId) {
 	console.log(res)
 }
 
-// Combines track IDs into batches of the specified size
-function batchTracks(trackIds, batchSize) {
+// Combines track IDs into batches of the specified size. Returns JSON including tracks or URIs, depending on whether we're adding to a playlist or removing.
+function batchTracks(trackIds, batchSize, isAdd) {
 	let trackIdsBatched = Array.from({ length: Math.ceil(trackIds.length / batchSize) }, (_, i) =>
 	    trackIds.slice(i * batchSize, i * batchSize + batchSize)
 	)
 
-	return trackIdsBatched.map(batch => ({
-	    tracks: batch.map(id => ({ uri: `spotify:track:${id}` }))
-	}))
+	if(isAdd) {
+		return trackIdsBatched.map(batch => ({
+		    uris: batch.map(id => `spotify:track:${id}` )
+		}))
+	} else {
+		return trackIdsBatched.map(batch => ({
+		    tracks: batch.map(id => ({ uri: `spotify:track:${id}` }))
+		}))
+	}
 }
 
 // Update playlists
 
 async function clearPlaylist(playlistId) {
 	let trackIds = await getTracksFromPlaylist(playlistId)
-	let trackIdsJson = batchTracks(trackIds, 100)
+	let trackIdsJson = batchTracks(trackIds, 100, false)
 
 	trackIdsJson.forEach((batch) => {
-		console.log(batch)
 		removeFromPlaylist(batch, playlistId)
 	})
 }
 
 async function mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists) {
-	// Iterate on each combined playlist
-	combinedPlaylistInfo.forEach((combId, combName) => {
+	for (const [combName, combId] of combinedPlaylistInfo.entries()) {
 
-		// Gather necessary tracks
-		let baseTracks = []
-		subPlaylists[combName].forEach((subName) => {
-			console.log(subName, basePlaylistInfo.get(subName))
-		})
-	})
+		for (const subName of subPlaylists[combName]) {
+			let basePlaylistId = basePlaylistInfo.get(subName)
+			let trackIds = await getTracksFromPlaylist(basePlaylistId)
+
+			let trackIdsJson = batchTracks(trackIds, 20, true)
+
+			for (const batch of trackIdsJson) {
+				await addToPlaylist(batch, combId)
+			}
+		}
+	}
+}
+
+async function updatePlaylists() {
+	token = await getToken()
+
+	let basePlaylistInfo = await getPlaylistNames(config.base_playlist_ids)
+
+	let combinedPlaylistInfo = await getPlaylistNames(config.combined_playlist_ids)
+
+	let subPlaylists = await getSubPlaylists(combinedPlaylistInfo)
+
+	for (const [combName, combId] of combinedPlaylistInfo.entries()) {
+		clearPlaylist(combId)
+	}
+	await mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists)
 }
 
 /* Calls begin here */
-
-token = await getToken()
-
-let basePlaylistInfo = await getPlaylistNames(config.base_playlist_ids)
-
-let combinedPlaylistInfo = await getPlaylistNames(config.combined_playlist_ids)
-
-let subPlaylists = await getSubPlaylists(combinedPlaylistInfo)
-
-/*
-config.combined_playlist_ids.forEach((id) => {
-	clearPlaylist(id)
-})
-*/
-
-clearPlaylist('0NLQM5ywWw39Bwiu9BiSx7')
-
-//await mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists)
+updatePlaylists()
