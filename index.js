@@ -64,7 +64,9 @@ async function fetchWebApi(endpoint, method, body) {
 }
 
 
-// Fetching playlist info
+/* Playlist access functions */
+
+// Returns a map with key=id, value=name
 async function getPlaylistNames(playlist_ids){
 	const playlists = await Promise.all(playlist_ids.map(async (id) => {
 		let res = await fetchWebApi(`v1/playlists/${id}`, 'GET')
@@ -75,6 +77,7 @@ async function getPlaylistNames(playlist_ids){
 	return new Map(playlists.map(({name, id}) => [name, id]));
 }
 
+// Given a list of combined playlists, returns a map with key=combined playlist name, value=array of sub-playlist names
 async function getSubPlaylists(combined_playlist_info) {
 	// Getting sub-playlists
 	let playlists = []
@@ -119,22 +122,8 @@ async function getSubPlaylists(combined_playlist_info) {
 	return playlists
 }
 
+// Returns an array of all track IDs inside the specified playlist
 async function getTracksFromPlaylist(playlistId) {
-	return await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'GET')
-}
-
-
-// Update playlists
-
-async function removeFromPlaylist(trackUris, playlistId) {
-	let res = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'DELETE', trackUris)
-	console.log(res)
-}
-
-async function clearPlaylist(playlistId) {
-	/* Step 1: get all track IDs inside this playlist */
-
-	// Fetch first batch of tracks
 	let tracksJson = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'GET')
 
 	// Handle first batch of tracks
@@ -158,15 +147,37 @@ async function clearPlaylist(playlistId) {
 		limit = tracksJson.limit
 	}
 
-	let trackIdsBatched = Array.from({ length: Math.ceil(trackIds.length / 100) }, (_, i) =>
-	    trackIds.slice(i * 100, i * 100 + 100)
+	return trackIds
+}
+
+// Removes the specified tracks from the specified playlist
+async function removeFromPlaylist(trackUris, playlistId) {
+	let res = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'DELETE', trackUris)
+	console.log(res)
+}
+
+// Adds the specified tracks to the specified playlist
+async function addToPlaylist(trackUris, playlistId) {
+	let res = await fetchWebApi(`v1/playlists/${playlistId}/tracks`, 'POST', trackUris)
+	console.log(res)
+}
+
+// Combines track IDs into batches of the specified size
+function batchTracks(trackIds, batchSize) {
+	let trackIdsBatched = Array.from({ length: Math.ceil(trackIds.length / batchSize) }, (_, i) =>
+	    trackIds.slice(i * batchSize, i * batchSize + batchSize)
 	)
 
-	let trackIdsJson = trackIdsBatched.map(batch => ({
+	return trackIdsBatched.map(batch => ({
 	    tracks: batch.map(id => ({ uri: `spotify:track:${id}` }))
 	}))
+}
 
-	console.log(trackIdsJson)
+// Update playlists
+
+async function clearPlaylist(playlistId) {
+	let trackIds = await getTracksFromPlaylist(playlistId)
+	let trackIdsJson = batchTracks(trackIds, 100)
 
 	trackIdsJson.forEach((batch) => {
 		console.log(batch)
@@ -201,4 +212,7 @@ config.combined_playlist_ids.forEach((id) => {
 	clearPlaylist(id)
 })
 */
-await mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists)
+
+clearPlaylist('0NLQM5ywWw39Bwiu9BiSx7')
+
+//await mergePlaylists(combinedPlaylistInfo, basePlaylistInfo, subPlaylists)
